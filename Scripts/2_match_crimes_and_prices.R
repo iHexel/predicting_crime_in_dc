@@ -144,19 +144,27 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
     mutate(freq = count*100 / sum(count)) %>% 
     arrange(desc(count))
     # only .6% of uber times have a crime occuring around them
+
+## look at surge distribution
+  ggplot(uberx.analysis, aes(x=has.crime, y=avg.surge, group=has.crime, fill=has.crime)) + geom_violin()
+    
+## add hour of day and day of week
+  uberx.analysis$hr  <- hour(uberx.analysis$timestamp.half)
+  uberx.analysis$dow <- wday(uberx.analysis$timestamp.half)
   
-  
-  head(uberx.analysis)
 ## try to map a logistic regression
   train.indices = sample(1:nrow(uberx.analysis), as.integer(nrow(uberx.analysis) * 0.75))
-  log.fit = glm(has.crime ~ avg.surge, data = uberx.analysis[train.indices, ], family="binomial")
+  log.fit = glm(has.crime ~ avg.surge+factor(hr)+factor(dow), data = uberx.analysis[train.indices, ], family="binomial")
   summary(log.fit)
 
   # predict on held-out 25% and evaluate raw accuracy
-  predictions = predict(log.fit, newdata = uberx.analysis[-train.indices, ])
-  num.correct = sum(predictions$class == uberx.analysis[-train.indices,]$has.crime)
+  predictions = predict.glm(log.fit, newdata = uberx.analysis[-train.indices, ], type="response")
+  num.correct = sum(predictions == uberx.analysis[-train.indices,]$has.crime)
   accuracy = num.correct / nrow(uberx.analysis[-train.indices, ])
   accuracy
+  # well then...
+  
+  
   
 # look at clustering:
 library(ks);  library(RColorBrewer)

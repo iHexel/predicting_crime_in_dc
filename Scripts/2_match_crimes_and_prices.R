@@ -29,7 +29,8 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   uber.x2$timestamp.half <- uber.x2$timestamp
   minute(uber.x2$timestamp.half)<- floor(minute(uber.x2$timestamp)/30)*30
   second(uber.x2$timestamp.half)<-0
-
+  
+  # groupby timestamp and location and average surge/low/high
   uber.x2.roll <- uber.x2 %>% 
     dplyr::group_by(timestamp.half, start_location_id, latitude, longitude) %>% 
     dplyr::summarise(avg.surge = mean(surge_multiplier, na.rm=TRUE),
@@ -42,11 +43,11 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   nrow(crime)
   # 22,223
 
-# fix dates:
-  crime$reportdatetime    <- ymd_hms(crime$reportdatetime, tz = "UTC")
-  crime$lastmodifieddate  <- ymd_hms(crime$lastmodifieddate, tz = "UTC")
-  crime$start_date        <- ymd_hms(crime$start_date, tz = "UTC")
-  crime$end_date          <- ymd_hms(crime$end_date, tz = "UTC")
+  # format dates:
+    crime$reportdatetime    <- ymd_hms(crime$reportdatetime, tz = "UTC")
+    crime$lastmodifieddate  <- ymd_hms(crime$lastmodifieddate, tz = "UTC")
+    crime$start_date        <- ymd_hms(crime$start_date, tz = "UTC")
+    crime$end_date          <- ymd_hms(crime$end_date, tz = "UTC")
 
 ## check date overlap: crime data should be longer timeframe than uber:
   crime %>% summarise(min(reportdatetime), max(reportdatetime))
@@ -56,7 +57,7 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   crime<-crime[crime$reportdatetime>min(uber.x2.roll$timestamp.half) &
                crime$reportdatetime<max(uber.x2.roll$timestamp.half),]
   nrow(crime)
-  # 2,228
+  # 2,228 total crimes in timeframe
 
   ## look at offense scatter across DC
   ggplot(crime, aes(x=long, y=lat, color=offense)) + geom_point() + coord_equal()
@@ -119,8 +120,43 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
     crime_list$uber.timediff[i]<-min(potential_ubers$diff)
   }
   crime_list$uber.time<-as.POSIXct(as.numeric(crime_list$uber.time), origin = "1970-01-01", tz = "UTC")
-  head(crime_list)
- 
+
+  # whats the distribution of distances for the "soonest"
+  summary(crime_list$uber.timediff)
+  hist(crime_list$uber.timediff)
+  
+
+############################################################
+############################################################
+## match crimes to uber data
+############################################################
+############################################################
+  # now that we have linked crimes to nearest price point, pull the crimes
+  # into the full uberx table
+  uberx.analysis <- dplyr::left_join(uber.x2.roll,crime_list, 
+                                     by=c("timestamp.half"="uber.time", 
+                                          "start_location_id"="uber.location"))
+  uberx.analysis$has.crime <- ifelse(is.na(uberx.analysis$objectid)==TRUE,0,1)
+  
+  uberx.analysis %>% 
+    dplyr::group_by(has.crime)  %>% 
+    dplyr::summarise(count=n()) %>%
+    mutate(freq = count*100 / sum(count)) %>% 
+    arrange(desc(count))
+    # only .6% of uber times have a crime occuring around them
+  
+  
+  head(uberx.analysis)
+## try to map a logistic regression
+  train.indices = sample(1:nrow(uberx.analysis), as.integer(nrow(uberx.analysis) * 0.75))
+  log.fit = glm(has.crime ~ avg.surge, data = uberx.analysis[train.indices, ], family="binomial")
+  summary(log.fit)
+
+  # predict on held-out 25% and evaluate raw accuracy
+  predictions = predict(log.fit, newdata = uberx.analysis[-train.indices, ])
+  num.correct = sum(predictions$class == uberx.analysis[-train.indices,]$has.crime)
+  accuracy = num.correct / nrow(uberx.analysis[-train.indices, ])
+  accuracy
   
 # look at clustering:
 library(ks);  library(RColorBrewer)

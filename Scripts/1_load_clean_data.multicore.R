@@ -4,16 +4,17 @@
 #       Most of the time is still spent on the synchronous action
 #       for reading the csv
 
-suppressWarnings(suppressMessages(library(dplyr)));
+suppressWarnings(suppressMessages(library(dplyr)))
 # # install.packages("devtools")
 # devtools::install_github("hadley/multidplyr")
 library(multidplyr)
+library(readr)
 
 paste("Starting Processing ...", Sys.time())
 
 ## read uber data in. downloaded from:
 ## https://drive.google.com/drive/u/0/folders/0B-mutxqHY34rblhORk9raWxQQjQ
-uber <- read.csv("../Data/TractsSurgeDC2_Feb4_Mar2.csv")
+uber <- read_csv("../Data/TractsSurgeDC2_Feb4_Mar2.csv")
 ## data doc:
     # "timestamp" : string, Date and Time (EST) when API was pinged
     # "surge_multiplier": float, The surge multiplier for the current time and location
@@ -30,13 +31,11 @@ paste("Loaded CSV ...", Sys.time())
 uber %>%
   filter(product_type=="uberX") %>%
   select(-product_type) %>%
-  mutate(timestamp=as.POSIXct(as.character(timestamp), format="%Y-%m-%d %H:%M:%S")) %>%
   saveRDS(file="../output/uberx.rds") # RDS serializes the data and prevents namespace pollution on readRDS
 
 
 # pool together all types of ubers in case we decide to look at it this way
 uber %>%
-  mutate(timestamp=as.POSIXct(as.character(timestamp), format="%Y-%m-%d %H:%M:%S")) %>%
   partition(timestamp, start_location_id) %>%
   summarise(avg_surge_multiplier=mean(as.numeric(surge_multiplier), na.rm=TRUE),
             avg_expected_wait_time=mean(as.numeric(expected_wait_time), na.rm=TRUE),

@@ -32,7 +32,8 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   
   # groupby timestamp and location and average surge/low/high
   uber.x2.roll <- uber.x2 %>% 
-    dplyr::group_by(timestamp.half, start_location_id, latitude, longitude) %>% 
+    dplyr::group_by(start_location_id, latitude, longitude) %>% 
+    #dplyr::group_by(timestamp.half, start_location_id, latitude, longitude) %>% 
     dplyr::summarise(avg.surge = mean(surge_multiplier, na.rm=TRUE),
                      avg.low   = mean(low_estimate, na.rm=TRUE),
                      avg.high  = mean(high_estimate, na.rm=TRUE)) 
@@ -51,11 +52,11 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
 
 ## check date overlap: crime data should be longer timeframe than uber:
   crime %>% summarise(min(reportdatetime), max(reportdatetime))
-  uber.x2.roll %>% summarise(min(timestamp.half), max(timestamp.half))
+  uber.x2 %>% summarise(min(timestamp.half), max(timestamp.half))
 
 ## limit crime data to be inside uber dates:
-  crime<-crime[crime$reportdatetime>min(uber.x2.roll$timestamp.half) &
-               crime$reportdatetime<max(uber.x2.roll$timestamp.half),]
+  crime<-crime[crime$reportdatetime>min(uber.x2$timestamp.half) &
+               crime$reportdatetime<max(uber.x2$timestamp.half),]
   nrow(crime)
   # 2,228 total crimes in timeframe
 
@@ -81,8 +82,11 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
     # Probably only want to concentrate on non property crimes
 
 # extract items of interest from crime table
-  crime_list<- crime[,c("long", "lat", "reportdatetime", "objectid")]
-
+  crime_list<- crime %>% 
+          #filter(offense %in% c("THEFT/OTHER", "ROBBERY", "ASSAULT W/DANGEROUS WEAPON", "BURGLARY")) %>%#, "SEX ABUSE", "HOMICIDE")) %>% 
+          #filter(offense %in% c("ROBBERY")) %>% 
+          select(long, lat, reportdatetime, objectid)
+  nrow(crime_list)
 ######################################################################
 ## find nearest uber point for each crime
 ## use distm to create matrix of closest uber points
@@ -102,74 +106,91 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   # whats the distribution of distances for the "nearest"
   summary(crime_list$uber.dist)
   hist(crime_list$uber.dist)
-  plot(ecdf(crime_list$uber.dist))
   ## most crimes can be matched to a uber call within 200 meters ~80%
 
 ######################################################################
 ## find the uber call that is soonest to crime report at that point
 ######################################################################
-  for (i in 1:nrow(crime_list)) {
-    # pull current crime details
-    crime.point <- crime_list[i,c("uber.location", "reportdatetime")]
-    # limit to crimes within an hour after
-    potential_ubers <- uber.x2.roll[uber.x2.roll$start_location_id==crime.point[,1],] %>% 
-      dplyr::mutate(diff = difftime(timestamp.half, crime.point[,2], units="hours")) %>% 
-      dplyr::filter(diff>0 & diff<=1) 
-    # select timestamp of soonest crime and assign to crime table
-    crime_list$uber.time[i] <- potential_ubers[potential_ubers$diff==min(potential_ubers$diff), c("timestamp.half")]
-    crime_list$uber.timediff[i]<-min(potential_ubers$diff)
-  }
-  crime_list$uber.time<-as.POSIXct(as.numeric(crime_list$uber.time), origin = "1970-01-01", tz = "UTC")
-
-  # whats the distribution of distances for the "soonest"
-  summary(crime_list$uber.timediff)
-  hist(crime_list$uber.timediff)
-  
+  # for (i in 1:nrow(crime_list)) {
+  #   # pull current crime details
+  #   crime.point <- crime_list[i,c("uber.location", "reportdatetime")]
+  #   # limit to crimes within an hour after
+  #   potential_ubers <- uber.x2.roll[uber.x2.roll$start_location_id==crime.point[,1],] %>%
+  #     dplyr::mutate(diff = difftime(timestamp.half, crime.point[,2], units="hours")) %>%
+  #     dplyr::filter(diff>0 & diff<=1)
+  #   # select timestamp of soonest crime and assign to crime table
+  #   crime_list$uber.time[i] <- potential_ubers[potential_ubers$diff==min(potential_ubers$diff), c("timestamp.half")]
+  #   crime_list$uber.timediff[i]<-min(potential_ubers$diff)
+  # }
+  # crime_list$uber.time<-as.POSIXct(as.numeric(crime_list$uber.time), origin = "1970-01-01", tz = "UTC")
+  # 
+  # # whats the distribution of distances for the "soonest"
+  # summary(crime_list$uber.timediff)
+  # hist(crime_list$uber.timediff)
 
 ############################################################
 ############################################################
 ## match crimes to uber data
 ############################################################
 ############################################################
-  # now that we have linked crimes to nearest price point, pull the crimes
-  # into the full uberx table
-  uberx.analysis <- dplyr::left_join(uber.x2.roll,crime_list, 
-                                     by=c("timestamp.half"="uber.time", 
-                                          "start_location_id"="uber.location"))
+  uberx.analysis <- dplyr::left_join(uber.x2.roll,crime_list,
+                                     by=c(####"timestamp.half"="uber.time",
+                                       "start_location_id"="uber.location"))
   uberx.analysis$has.crime <- ifelse(is.na(uberx.analysis$objectid)==TRUE,0,1)
   
-  uberx.analysis %>% 
-    dplyr::group_by(has.crime)  %>% 
-    dplyr::summarise(count=n()) %>%
-    mutate(freq = count*100 / sum(count)) %>% 
-    arrange(desc(count))
-    # only .6% of uber times have a crime occuring around them
+  # count number of crimes that occured
+  uberx.analysis <- uberx.analysis %>% 
+    dplyr::group_by(start_location_id, latitude, longitude, avg.surge, avg.low, avg.high, has.crime) %>% 
+    dplyr::summarise(num.crime = n_distinct(objectid)) 
+  
+  # adapted from Lev's code:
+      library(SDMTools); library(maptools)
+      tract <- readShapePoly('/Users/bradyfowler/Downloads/Census/Census_Tracts__2010.shp')
+      cdata <- read.csv('/Users/bradyfowler/Downloads/Census/Census_Tracts__2010.csv')
+      tract_geom <- fortify(tract, region = "GEOID")
+      # for each uber point, figure out which geoid it fits in
+      # create new dataframe with lat, long of uber and geo ID
+      geom_ids<-data.frame(unique(tract_geom$id))
+      colnames(geom_ids)<-"unique.id"
+      lat.long.geoid <- data.frame()
+      for (i in 1:nrow(geom_ids)){
+        current.id <- geom_ids[i,]
+        tract_points_in_geom <- pnt.in.poly(lat.long[,c("longitude","latitude")], tract_geom[tract_geom$id==current.id, c("long","lat")])
+        lat.long.geoid <- rbind(lat.long.geoid, cbind(tract_points_in_geom[tract_points_in_geom$pip==1,], current.id))
+      }
+  
+  # map uber analysis data to the geoid to pull in demographic info
+  uberx.analysis <- left_join(uberx.analysis, lat.long.geoid, by = c("latitude", "longitude"))
+  # cast geoid
+  cdata$GEOID <- factor(cdata$GEOID)
+  # join in demographic data
+  uberx.analysis <- left_join(uberx.analysis, cdata, by=c("current.id"="GEOID"))
+  # create fields of demographic inputs
+  uberx.analysis$total_population <- uberx.analysis$P0010001
+  uberx.analysis$pct.minority <- (uberx.analysis$P0010001-uberx.analysis$P0020005)/uberx.analysis$P0010001
+  uberx.analysis$pct.over.18 <- uberx.analysis$P0030001/uberx.analysis$P0010001
+  uberx.analysis$pct.vacant.homes <- uberx.analysis$H0010003/uberx.analysis$H0010001
 
-## look at surge distribution
-  ggplot(uberx.analysis, aes(x=has.crime, y=avg.surge, group=has.crime, fill=has.crime)) + geom_violin()
-    
 ## add hour of day and day of week
-  uberx.analysis$hr  <- hour(uberx.analysis$timestamp.half)
-  uberx.analysis$dow <- wday(uberx.analysis$timestamp.half)
+  # uberx.analysis$hr  <- hour(uberx.analysis$timestamp.half)
+  # uberx.analysis$dow <- wday(uberx.analysis$timestamp.half)
   
 ## try to map a logistic regression
   train.indices = sample(1:nrow(uberx.analysis), as.integer(nrow(uberx.analysis) * 0.75))
-  log.fit = glm(has.crime ~ avg.surge+factor(hr)+factor(dow), data = uberx.analysis[train.indices, ], family="binomial")
-  summary(log.fit)
-
+  pairs(uberx.analysis[,c("num.crime","avg.surge", "pct.minority", "pct.over.18", "pct.vacant.homes", "FAGI_MEDIAN_2013")])
+  lm = lm(num.crime ~ avg.surge+pct.minority+pct.over.18+pct.vacant.homes+FAGI_MEDIAN_2013, data = uberx.analysis[train.indices, ])
+  summary(lm)
+  
   # predict on held-out 25% and evaluate raw accuracy
-  predictions = predict.glm(log.fit, newdata = uberx.analysis[-train.indices, ], type="response")
-  num.correct = sum(predictions == uberx.analysis[-train.indices,]$has.crime)
+  predictions = predict(lm, newdata = uberx.analysis[-train.indices, ], type="response")
+  num.correct = sum((predictions-uberx.analysis[-train.indices,]$num.crime))
   accuracy = num.correct / nrow(uberx.analysis[-train.indices, ])
   accuracy
-  # well then...
-  
-  
-  
+
 # look at clustering:
-library(ks);  library(RColorBrewer)
-points = crime[,c("X","Y")]
-Hpi1 <- Hpi(x = points, pilot="dscalar", bgridsize =c(300,300))
-plt <- kde(x = points, H = Hpi1, bgridsize = 2000)
-r <- colorRampPalette(rev(brewer.pal(11,'Spectral')))(32)
-image(plt$estimate, col = r, useRaster=TRUE, asp=1, axes=FALSE); 
+# library(ks);  library(RColorBrewer)
+# points = crime[,c("X","Y")]
+# Hpi1 <- Hpi(x = points, pilot="dscalar", bgridsize =c(300,300))
+# plt <- kde(x = points, H = Hpi1, bgridsize = 2000)
+# r <- colorRampPalette(rev(brewer.pal(11,'Spectral')))(32)
+# image(plt$estimate, col = r, useRaster=TRUE, asp=1, axes=FALSE); 

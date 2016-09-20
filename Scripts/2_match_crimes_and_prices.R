@@ -20,8 +20,8 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
 
 ## join lat/long details into uberx
 ## remove unnecessary columns and cast the timestamps
-  uber.x2  <- left_join(uber.x, lat.long, by=c("start_location_id"="locations")) %>% 
-    select(-end_location_id, -expected_wait_time, -product_type)
+  uber.x2  <- left_join(uber.x, lat.long, by=c("start_location_id"="locations")) # %>% 
+    #select(-end_location_id, -expected_wait_time, -product_type)
   uber.x2$timestamp <- ymd_hms(uber.x2$timestamp, tz = "UTC")
   head(uber.x2)
 
@@ -82,7 +82,7 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
     # Probably only want to concentrate on non property crimes
 
 # extract items of interest from crime table
-  crime_list<- crime %>% 
+  crime_list<- crime %>% dplyr::select(long, lat, reportdatetime, objectid)
           #filter(offense %in% c("THEFT/OTHER", "ROBBERY", "ASSAULT W/DANGEROUS WEAPON", "BURGLARY")) %>%#, "SEX ABUSE", "HOMICIDE")) %>% 
           #filter(offense %in% c("ROBBERY")) %>% 
           select(long, lat, reportdatetime, objectid)
@@ -112,11 +112,11 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   ## most crimes can be matched to a uber call within 200 meters ~80%
 
   ## check point clustering with a few examples:
-  ggplot(subset(crime_list, uber.location==116), aes(x=long, y=lat, colour=factor(uber.location))) +
+  ggplot(subset(crime_list, uber.location==100), aes(x=long, y=lat, colour=factor(uber.location))) +
     geom_point() +coord_equal() + guides(colour=FALSE) +
     xlim(min(crime_list$long), max(crime_list$long))+
     ylim(min(crime_list$lat), max(crime_list$lat)) + 
-    geom_point(data=subset(lat.long, locations==116), aes(x=longitude, y=latitude, colour="black"))
+    geom_point(data=subset(lat.long, locations==100), aes(x=longitude, y=latitude, colour="black"))
 
   ggplot(crime_list, aes(x=long, y=lat, colour=factor(uber.location))) +
     geom_point() +coord_equal() + guides(colour=FALSE) 

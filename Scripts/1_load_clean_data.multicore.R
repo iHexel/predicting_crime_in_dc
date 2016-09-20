@@ -8,6 +8,7 @@ suppressWarnings(suppressMessages(library(dplyr)))
 # # install.packages("devtools")
 # devtools::install_github("hadley/multidplyr")
 library(multidplyr)
+suppressMessages(library(lubridate))
 library(readr)
 
 paste("Starting Processing ...", Sys.time())
@@ -25,23 +26,18 @@ uber <- read_csv("../Data/TractsSurgeDC2_Feb4_Mar2.csv")
     # "start_location_id": integer, number between 0-275 that relates to our predetermined longitudes and latitudes across DC.
     # "end_location_id": integer, number between 0-275 that relates to our predetermined longitudes and latitudes across DC.
 
+
 paste("Loaded CSV ...", Sys.time())
-
-# limit to uberX
-uber %>%
-  filter(product_type=="uberX") %>%
-  select(-product_type) %>%
-  saveRDS(file="../output/uberx.rds") # RDS serializes the data and prevents namespace pollution on readRDS
-
 
 # pool together all types of ubers in case we decide to look at it this way
 uber %>%
+  mutate(timestamp=update(timestamp,minutes=0,seconds=0)) %>%
   partition(timestamp, start_location_id) %>%
   summarise(avg_surge_multiplier=mean(as.numeric(surge_multiplier), na.rm=TRUE),
             avg_expected_wait_time=mean(as.numeric(expected_wait_time), na.rm=TRUE),
             avg_low_estimate=mean(as.numeric(low_estimate), na.rm=TRUE),
             avg_high_estimate=mean(as.numeric(high_estimate ), na.rm=TRUE)) %>%
   collect() %>%
-  saveRDS(file="../output/uberpooled.rds")
+  saveRDS(file="../output/uberpooled.rds") # RDS serializes the data and prevents namespace pollution on readRDS
 
 paste("Done", Sys.time())

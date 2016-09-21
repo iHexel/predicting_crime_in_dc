@@ -9,9 +9,17 @@ library(multidplyr)
 library(mapproj)
 library(ggplot2)
 library(readr)
+library(SDMTools)
+library(maptools)
 
 
-uber.x <- readRDS("../Output/uberx.rds")
+################################################################################
+#
+# Load External Data
+#
+################################################################################
+census.tracts <- readShapePoly('../Data/Census/Census_Tracts__2010.shp')
+census.data <- read.csv('../Data/Census/Census_Tracts__2010.csv')
 uber.pooled <- readRDS("../Output/uberpooled.rds")
 uber.locations <- read_csv("../Data/awsLocations.csv")
 crime.data <- read_csv("../Data/Crime_Incidents__2016.csv") %>%
@@ -21,60 +29,75 @@ crime.data <- read_csv("../Data/Crime_Incidents__2016.csv") %>%
     !is.na(end_date)
   ) %>%
   select(longitude, latitude, offense, ward, district, census_tract, start_date, end_date)
+# crime.data %>% glimpse
 
 
-left_join(uber.pooled,
-          uber.locations,
-          by=c("start_location_id"="locations")) %>%
-  select(-start_location_id) ->
-  uber.pooled.long.lat
-
-
-crime.data %>%
-  select(longitude,latitude,start_date) %>%
-  rename(timestamp=start_date) %>%
-  mutate(timestamp=as.numeric(timestamp)) ->
-  source.pts.crime
-# source.pts.crime %>% head
-
-
-uber.pooled.long.lat %>%
-  select(longitude, latitude, timestamp) %>%
-  ungroup %>%
-  mutate(timestamp=as.numeric(timestamp)) ->
-  eval.pts.uber
-# eval.pts.uber %>% head
-
-
-h <- Hpi(x = source.pts.crime,
-         pilot="dscalar")
-# This naive use spends ~90 minutes on my box to finish
-k <- kde(x = source.pts.crime,
-         H = (h + t(h))/2, # NOTE: the h matrix from Hpi isn't quite symetric; this forces it to be
-         eval.points = eval.pts.uber)
-
-
-k %>% saveRDS(file="../output/kde.evals.rds")
-
-
-
-# data.frame(a=1:50,b=50:1) %>%
-#   partition() %>%
-#   mutate(c=a+1) %>%
-#   collect() %>%
-#   arrange(a)
-
-# NOTE: !!! This is not working!
-#       dmvnorm mean and sigma have non-conforming size error
-# eval.pts.fn <- function(eval.pts) {
-#   k <- kde(x = source.pts.crime,
-#            H = (h + t(h))/2, # NOTE: the h matrix from Hpi isn't quite symetric; this forces it to be
-#            eval.points = eval.pts %>% select(-PARTITION_ID))
-#   cbind(eval.pts,data.frame(estimate=k$estimate))
-# }
+################################################################################
 #
-# eval.pts.uber %>%
-#   partition() %>%
-#   eval.pts.fn %>%
-#   collect() %>%
-#   saveRDS(file="../output/temp.evals.rds")
+# Census Location Tools
+#
+################################################################################
+tract_geom <- fortify(census.tracts, region = "GEOID")
+tract_poly <- merge(tract_geom, census.data, by.x = "id", by.y = "GEOID")
+
+assign.census.tract.id <- function(crime.data.current,ids) {
+  if (length(ids) < 1) return(crime.data.current)
+  id.current <- ids %>% first
+  id.tail <- ids %>% tail(length(ids)-1)
+
+  pnt.in.poly(
+      crime.data.current %>% select(longitude, latitude),
+      tract_geom %>% filter(id==id.current) %>% select(long,lat)
+    ) %>% select(pip) %>% unlist -> pip
+
+  crime.data.current %>%
+    mutate(census.tract=ifelse(pip==1,id.current,census.tract)) %>%
+    assign.census.tract.id(id.tail)
+}
+add.census.tract <- function(long.lat.data) {
+  tract_geom %>%
+    get('id',.) %>%
+    unique -> tract_geom.ids
+  long.lat.data %>%
+    mutate(census.tract=NA) %>%
+    assign.census.tract.id(tract_geom.ids)
+}
+
+# super fast 'cheating'
+crime.data.add.census.tract <- function(crime.data) {
+  crime.data %>%
+    mutate(census.tracts=paste('11001',census_tract,sep='')) %>%
+    select(-census_tract)
+}
+
+
+# crime.data %>% crime.data.add.census.tract %>% glimpse
+# crime.data %>% add.census.tract %>% glimpse
+# uber.locations %>% add.census.tract %>% glimpse
+
+
+# system.time({crime.data %>% crime.data.add.census.tract})
+# system.time({crime.data %>% add.census.tract})
+# system.time({uber.locations %>% add.census.tract})
+
+
+
+
+################################################################################
+#
+# Combine and Group By Census Tracts
+#
+################################################################################
+left_join(uber.pooled,
+          uber.locations %>% add.census.tract,
+          by=c("start_location_id"="locations")) %>%
+  select(-start_location_id) -> uber.pooled.census
+
+crime.data %>% add.census.tract -> crime.data.census
+
+
+# TODO: group by and counts and other values
+
+# TODO: Remove these writes and only write out the final
+uber.pooled.census %>% saveRDS(file="../output/uber.pooled.census.rds")
+crime.data.census %>% saveRDS(file="../output/crime.data.census.rds")

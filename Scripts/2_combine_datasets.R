@@ -93,8 +93,14 @@ left_join(uber.pooled,
           by=c("start_location_id"="locations")) %>%
   select(-start_location_id) -> uber.pooled.census
 
+## something is wrong with this combination - it has multiple rows per timestamp/census tract
+uber.pooled.census %>% 
+  filter(timestamp =="2016-02-08 18:00:00", census.tract=="11001000300") %>% 
+  glimpse()
+## i dont think we want to roll up the uber data until we have tagged it with census.tract
+## because there are multiple uber locations within a neighborhood so we will want to keep it at the
+## request level not request location level
 crime.data %>% add.census.tract -> crime.data.census
-
 
 # TODO: group by and counts and other values
 

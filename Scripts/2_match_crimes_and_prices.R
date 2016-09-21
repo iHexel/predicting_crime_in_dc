@@ -29,6 +29,7 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   uber.x2$timestamp.half <- uber.x2$timestamp
   minute(uber.x2$timestamp.half)<- floor(minute(uber.x2$timestamp)/30)*30
   second(uber.x2$timestamp.half)<-0
+
   
   # groupby timestamp and location and average surge/low/high
   uber.x2.roll <- uber.x2 %>% 
@@ -112,11 +113,11 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
   ## most crimes can be matched to a uber call within 200 meters ~80%
 
   ## check point clustering with a few examples:
-  ggplot(subset(crime_list, uber.location==100), aes(x=long, y=lat, colour=factor(uber.location))) +
+  ggplot(subset(crime_list, uber.location==2), aes(x=long, y=lat, colour=factor(uber.location))) +
     geom_point() +coord_equal() + guides(colour=FALSE) +
     xlim(min(crime_list$long), max(crime_list$long))+
     ylim(min(crime_list$lat), max(crime_list$lat)) + 
-    geom_point(data=subset(lat.long, locations==100), aes(x=longitude, y=latitude, colour="black"))
+    geom_point(data=subset(lat.long, locations==2), aes(x=longitude, y=latitude, colour="black"))
 
   ggplot(crime_list, aes(x=long, y=lat, colour=factor(uber.location))) +
     geom_point() +coord_equal() + guides(colour=FALSE) 
@@ -177,6 +178,7 @@ library(dplyr); library(ggplot2); library(lubridate); library(geosphere); librar
         lat.long.geoid <- rbind(lat.long.geoid, cbind(tract_points_in_geom[tract_points_in_geom$pip==1,], current.id))
       }
   
+ 
   # map uber analysis data to the geoid to pull in demographic info
   uberx.analysis <- left_join(uberx.analysis, lat.long.geoid, by = c("latitude", "longitude"))
   # cast geoid

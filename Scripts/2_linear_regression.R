@@ -1,66 +1,88 @@
 # Analyse datasets
 suppressMessages(library(dplyr))
+suppressMessages(library(ggplot2))
+suppressMessages(library(lubridate))
+suppressMessages(library(maptools))
+suppressMessages(library(car))
 library(ggplot2)
 library(readr)
 library(car)
 library(lubridate)
+library(maptools)
+
+## notes from LEE:
+  ## hypothesis: more people more crime
+  ## train on month one and then test on the other month
+  ## cant use data from the next moment in creating prediction for this moment so compare current hour stats to next hour's crime
+  # discuss the assumptions and tests for multi colinearity:
+    # heterogeinity
+    # independence
+    # normality
+    # test for outliers
+  # if you add historical crime rates into the model then it could affect the validity 
+      ## discuss why we didnt keep last hour's crime into the model
+  ## USE VIF TO TEST THE INCLUSION OF VARIABLES
+    ## discuss why k-fold cross validation does not apply here because of the temporality
+  ## try a surveillance plot or ROC curve to show result
+  ## keep in mind that crime is a rare event so data is highly skewed so have to accomodate 
+    ## when choosing training and testing and in choosing threshhold
+
+########################################################################
+# 
+# import data and join crimes to uber info in hour before
+# 
+########################################################################
+## add lagged timestamp for crime to compare 9 pm uber surge to 10 pm crime
+crime.data.census <- readRDS("../Output/crime.data.census.rds") %>% 
+  mutate(timestamp=update(start_date,minutes=0,seconds=0)  + hours(1)) 
 
 uber.pooled.census <- readRDS("../Output/uber.pooled.census.rds")
-crime.data.census <- readRDS("../Output/crime.data.census.rds") %>% 
-  mutate(timestamp=update(start_date,minutes=0,seconds=0)) 
-# uber.pooled.census$tmp <- paste(month(uber.pooled.census$timestamp),'-',day(uber.pooled.census$timestamp),'-',hour(uber.pooled.census$timestamp))
-# crime.data.census$tmp <- paste(month(crime.data.census$timestamp),'-',day(crime.data.census$timestamp),'-',hour(crime.data.census$timestamp))
 
-# join crimes into uber data on the hourly level
+# join crime into uber data on the hourly level
 left_join(uber.pooled.census,
           crime.data.census %>% 
             group_by(timestamp, census.tract) %>% 
-            summarise(cnt.crimes=n()),
+            summarise(cnt.crime=n()),
           by=c("timestamp", "census.tract")) -> uber.crime
 
-## this will make sure crimes are only counted once
-sum(uber.crime$cnt.crimes, na.rm=TRUE) == nrow(crime.data.census)
-# not exactly joined 1:1 for some reason but close enough for now..
+## add day / evening / night
+uber.crime$tod <- ifelse(hour(uber.crime$timestamp) < 6,                                     "Late Night",     uber.crime$timestamp)
+uber.crime$tod <- ifelse(hour(uber.crime$timestamp) < 12 & hour(uber.crime$timestamp) >= 6,  "Morning",   uber.crime$tod)
+uber.crime$tod <- ifelse(hour(uber.crime$timestamp) < 18 & hour(uber.crime$timestamp) >= 12, "Afternoon", uber.crime$tod)
+uber.crime$tod <- ifelse(hour(uber.crime$timestamp) < 24 & hour(uber.crime$timestamp) >= 18, "Evening",   uber.crime$tod)
 
-#################################
-# create linear model
-#################################
-  ## format crime counts
-  uber.crime$cnt.crimes <- replace(uber.crime$cnt.crimes, is.na(uber.crime$cnt.crimes), 0)
-  uber.crime$has.crime <- ifelse(uber.crime$cnt.crimes>0,1,0)
+## set any NA's to 0 so they arent excluded in regression
+uber.crime[is.na(uber.crime)] <- 0
 
-  ## select training set
-  train.indices = sample(1:nrow(uber.crime), as.integer(nrow(uber.crime) * 0.75))
-  pairs(uber.crime[,c("has.crime","avg_surge_multiplier", "avg_expected_wait_time")])
-colnames(uber.crime)
-  ## run model
-  log.reg <- glm(has.crime ~ 
-                 avg_surge_multiplier+
-                 avg_expected_wait_time+
-                 pct.minority+
-                 pct.over.18+
-                 pct.vacant.homes+
-                 med.income.2013+
-                 tot.income.2013+
-                 nightclub+
-                 tavern+
-                 restaurant+
-                 club+
-                 liquor.st,
-                 #factor(census.tract), 
-                 data=uber.crime[train.indices, ], family="binomial")
-  summary(log.reg)
+## add summed nightlife variable
+uber.crime %>% 
+  mutate(nightlife = nightclub+tavern+club+liquor.st) -> uber.crime
 
-# predict on held-out 25% and evaluate confusion matrix
-  library(caret)
-  predictions = predict(log.reg, newdata = uber.crime[-train.indices, ], type="response")
-  threshold <- 0.1
-  pred      <- factor( ifelse(predictions > threshold, 1, 0) )
-  matrix <- confusionMatrix(pred, uber.crime[-train.indices,]$has.crime)
-  matrix$table
-  
-# create linear model
-  lm.reg <- lm(has.crime ~ 
+## num obs by week : determine train v. test proportion
+uber.crime %>% 
+  group_by(week(timestamp)) %>% 
+  summarise(cnt = n()) %>% 
+  mutate(cnt*100/sum(cnt))
+  # want to use weeks 5-8 as training
+
+########################################################################
+# 
+# create logistic model
+# 
+########################################################################
+## format crime counts
+uber.crime$cnt.crime <- replace(uber.crime$cnt.crime, is.na(uber.crime$cnt.crime), 0)
+uber.crime$has.crime <- ifelse(uber.crime$cnt.crime>0,1,0)
+
+## select training and testing set by month
+train = uber.crime %>% filter(week(timestamp)<9)
+test  = uber.crime %>% filter(week(timestamp)==9)
+pairs(train[1:1000,c("cnt.crime", "has.crime", "avg_surge_multiplier","avg_expected_wait_time","pct.minority","pct.over.18","pct.vacant.homes","med.income.2013","tot.income.2013","nightclub","tavern","restaurant","club","liquor.st")])
+  ## might not want both income factors in
+  ## caution with pct minority and median income included together
+
+## run model
+log.reg <- glm(has.crime ~ 
                avg_surge_multiplier+
                avg_expected_wait_time+
                pct.minority+
@@ -68,11 +90,131 @@ colnames(uber.crime)
                pct.vacant.homes+
                med.income.2013+
                tot.income.2013+
-               nightclub+
-               tavern+
-               restaurant+
-               club+
-               liquor.st+
-               factor(census.tract), 
-               data=uber.crime[train.indices, ])
-  summary(lm.reg)
+               nightlife,
+               #factor(census.tract), 
+               data=train, family="binomial")
+summary(log.reg)
+  
+## remove insignificant med.income.2013
+log.reg.2 <- glm(has.crime ~ 
+                 avg_surge_multiplier+
+                 avg_expected_wait_time+
+                 pct.minority+
+                 pct.over.18+
+                 pct.vacant.homes+
+                 tot.income.2013+
+                 nightlife,
+               #factor(census.tract), 
+               data=train, family="binomial")
+summary(log.reg.2)
+
+  
+# predict on held-out 25% and evaluate confusion matrix
+  library(caret)
+  predictions <- predict(log.reg.2, newdata = test, type="response")
+  threshold   <- 0.1
+  pred        <- factor(ifelse(predictions > threshold, 1, 0))
+  matrix      <- confusionMatrix(pred, test$has.crime)
+  matrix$table
+  
+## add predictions for last hour of data:
+  last.day <- test %>% filter(timestamp==max(test$timestamp))
+  last.day$predictions <- data.frame(predict(log.reg.2, newdata = last.day, type="response"))[,1]
+  last.day %>% glimpse()
+
+## plot prediction next to actual
+tract <- fortify(readShapePoly('../Data/Census/Census_Tracts__2010.shp'), region = "GEOID")
+tract_poly <- merge(tract, last.day, by.x = "id", by.y = "census.tract")
+
+# plot geoshapes colored by prediction
+  pred <- ggplot(tract_poly, aes(long, lat, group = group, fill = predictions))  + 
+    geom_polygon(colour="#ecf0f1", size=.2) + coord_equal() + 
+    ggtitle("Logistic Crime Prediction") + 
+    scale_fill_gradient(low = "skyblue1", high = "blue4", 
+                        guide = guide_legend(title = "Log Odds")) +
+    theme(legend.position = "bottom", 
+          axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+
+# plot actual
+  act <- ggplot(tract_poly, aes(long, lat, group = group, fill = cnt.crime)) + 
+    geom_polygon(colour="#ecf0f1", size=.2) + coord_equal() + 
+    ggtitle("Actual Crime Count") + 
+    scale_fill_gradient(low = "skyblue1", high = "blue4", breaks=c(0,1,2,3,4), 
+                        guide = guide_legend(title = "# Crimes")) +
+    theme(legend.position = "bottom", 
+          axis.line=element_blank(),axis.text.x=element_blank(),
+          axis.text.y=element_blank(),axis.ticks=element_blank(),
+          axis.title.x=element_blank(),
+          axis.title.y=element_blank(),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          panel.background = element_blank())
+
+# Plot side by side
+library(gridExtra)
+library(grid)
+library(ggplot2)
+library(lattice)
+main=textGrob("Predicted vs. Actual Crime by Neighborhood\n2016-03-03 08:00:00 UTC",gp=gpar(fontsize=15,font=3))
+grid.arrange(pred, act, ncol=2, top = main)
+
+
+########################################################################
+#
+# CALCULATE SURVEILLANCE PLOT
+#
+########################################################################
+## this will evaluate how our model performs as a tool for cops to determine how to prioritize neighborhoods
+## we want to rank the neighborhoods in terms of descending probability
+## count the # crimes that occured in those neighborhoods as # total crimes
+predictions <- predict(log.reg.2, newdata = test, type="response")
+test$predictions <- data.frame(predict(log.reg.2, newdata = test, type="response"))[,1]
+
+# rank the predictions by highest to lowest
+# find cumulative pct crime captured by neighborhood by ranked prediction
+test %>% 
+  group_by(timestamp) %>% 
+  mutate(predict.rank=rank(-predictions, ties.method = 'first'),
+         pct.crime = cnt.crime*100/sum(cnt.crime),
+         pct.surveilled = round(predict.rank*100/max(predict.rank),0)) %>% 
+  arrange(predict.rank) %>% mutate(tot.pct.crime = cumsum(pct.crime)) -> test
+
+# create summary of pct surveilled by time of day
+# all times together
+surveil.summary <- test %>% 
+    mutate(tod="All Times") %>% 
+    group_by(tod, pct.surveilled) %>% 
+    summarise(avg.crime.caught = mean(tot.pct.crime, na.rm=TRUE))
+
+# by time of day
+surveil.summary.tod <- test %>% 
+    group_by(tod, pct.surveilled) %>% 
+    summarise(avg.crime.caught = mean(tot.pct.crime, na.rm=TRUE))
+
+# plot for all times
+all.time <- ggplot(surveil.summary, aes(x=pct.surveilled, y=avg.crime.caught, colour=tod)) +
+  theme(legend.position = "bottom") + geom_point() + geom_line() +coord_equal() + 
+  scale_color_manual(values="#2ecc71", guide = guide_legend(title = "")) +
+  ggtitle("All Times of Day")+ geom_abline(aes(intercept=0, slope=1)) +
+  scale_x_continuous(name="Percent Surveilled", breaks=seq(0,100,5)) + 
+  scale_y_continuous(name="Avg % Incidents Caught", breaks=seq(0,100,10)) 
+
+# plot by time
+by.time <- ggplot(surveil.summary.tod, aes(x=pct.surveilled, y=avg.crime.caught, colour=tod)) +
+  theme(legend.position = "bottom") + geom_point() + geom_line() +coord_equal() + 
+  scale_color_manual(values=c("#95a5a6", "#3498db", "#34495e", "#e74c3c"), guide = guide_legend(title = "")) +
+  ggtitle("All Times of Day")+ geom_abline(aes(intercept=0, slope=1)) +
+  scale_x_continuous(name="Percent Surveilled", breaks=seq(0,100,5)) + 
+  scale_y_continuous(name="Avg % Incidents Caught", breaks=seq(0,100,10)) 
+
+# plot both together
+main=textGrob("Surveillance Plot by Time of Day",gp=gpar(fontsize=15,font=3))
+grid.arrange(all.time, by.time, ncol=2, top = main)

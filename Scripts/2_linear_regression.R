@@ -238,13 +238,14 @@ lines(lowess(fitted(log.reg.2), rstandard(log.reg.2)), col = "green", lwd = 2)
   library(ROCR)
   par(mfrow = c(1,2))
   roc.pred <- prediction(predict(log.reg.2, newdata = test, type = "response"), test$has.crime)
-  roc.perf <- performance(prediction, "tpr", "fpr")
-  auc <- performance(prediction, "auc")@y.values[[1]]
+  roc.perf <- performance(roc.pred, "tpr", "fpr")
+  auc <- performance(roc.pred, "auc")@y.values[[1]]
   plot(roc.perf, main = paste("ROC (AUC=", round(auc,2), ")", sep = ""))
   abline(0, 1, lty = "dashed")
+
   roc.predalt <- prediction(predict(model.final, newdata = test, type = "response"), test$has.crime)
-  roc.perfalt <- performance(prediction, "tpr", "fpr")
-  aucalt <- performance(prediction, "auc")@y.values[[1]]
+  roc.perfalt <- performance(roc.predalt, "tpr", "fpr")
+  aucalt <- performance(roc.predalt, "auc")@y.values[[1]]
   plot(roc.perfalt, main = paste("ROC (AUC=", round(auc,2), ") Alt", sep = ""), col = "red")
   abline(0, 1, lty = "dashed", col = "red")
   par(mfrow = c(1,1))

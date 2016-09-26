@@ -32,7 +32,6 @@ library(maptools)
 # import data and join crimes to uber info in hour before
 # 
 ########################################################################
-
 # setwd("C:/Users/hexel/Documents/R/SYS6018/Case1/v2/case1-crime-brady_dev")
 ## add lagged timestamp for crime to compare 9 pm uber surge to 10 pm crime
 crime.data.census <- readRDS("../Output/crime.data.census.rds") %>% 
@@ -75,17 +74,16 @@ uber.crime %>%
 ## format crime counts
 uber.crime$cnt.crime <- replace(uber.crime$cnt.crime, is.na(uber.crime$cnt.crime), 0)
 uber.crime$has.crime <- ifelse(uber.crime$cnt.crime>0,1,0)
+uber.crime$hour <- hour(uber.crime$timestamp)
+uber.crime$hour.factor <- factor(uber.crime$hour)
 
 ## select training and testing set by month
 train = uber.crime %>% filter(week(timestamp)<9)
 test  = uber.crime %>% filter(week(timestamp)==9)
-pairs(train[1:1000,c("cnt.crime", "has.crime", "avg_surge_multiplier","avg_expected_wait_time","pct.minority","pct.over.18","pct.vacant.homes","med.income.2013","tot.income.2013","nightclub","tavern","restaurant","club","liquor.st")])
-  ## might not want both income factors in
-  ## caution with pct minority and median income included together
 
 # Alternative to pairs function
 library(PerformanceAnalytics)
-chart.Correlation(train[1:1000,c("cnt.crime", "has.crime", "avg_surge_multiplier","avg_expected_wait_time","pct.minority","pct.over.18","pct.vacant.homes","med.income.2013","tot.income.2013","nightclub","tavern","restaurant","club","liquor.st")], 
+chart.Correlation(train[1:1000,c("has.crime", "hour", "avg_surge_multiplier","avg_expected_wait_time","pct.minority","pct.over.18","pct.vacant.homes","med.income.2013","tot.income.2013","nightclub","tavern","restaurant","club","liquor.st")], 
                   method="spearman",
                   histogram=TRUE,
                   pch=16)
@@ -96,8 +94,7 @@ chart.Correlation(train[1:1000,c("cnt.crime", "has.crime", "avg_surge_multiplier
 
 # Alternative model selection method using a stepwise selection process (based on AIC)
   ## AIC shows the tradeoff between goodness of fit and complexity of the model, a mean of model selection
-model.null <- glm(has.crime ~ 1, 
-                  data = train, family = binomial(link = "logit"))
+model.null <- glm(has.crime ~ 1, data = train, family = binomial(link = "logit"))
 
 model.full <- glm(has.crime ~ 
                     avg_surge_multiplier+
@@ -107,7 +104,8 @@ model.full <- glm(has.crime ~
                     pct.vacant.homes+
                     med.income.2013+
                     tot.income.2013+
-                    nightlife,
+                    nightlife+
+                    hour.factor,
                   data = train, family = binomial(link = "logit"))
 
 step(model.null,
@@ -117,142 +115,121 @@ step(model.null,
      data = train)
 
 # based on stepwise model selection, the final model is the following
-model.final <- glm(formula = has.crime ~ nightlife + pct.vacant.homes + tot.income.2013 + 
-                     pct.minority + pct.over.18 + avg_expected_wait_time + avg_surge_multiplier, 
+model.final <- glm(formula = has.crime~hour.factor+nightlife+pct.vacant.homes+tot.income.2013+
+                     pct.minority+pct.over.18+avg_expected_wait_time, 
                    family = binomial(link = "logit"), data = train)
-
-summary(model.final) # AIC: 15878
+summary(model.final) # AIC: 15439
 
 Anova(model.final, type = "II", test = "Wald")
-#                           Df   Chisq Pr(>Chisq)    
-#   nightlife               1 233.112  < 2.2e-16 ***
-#   pct.vacant.homes        1  24.700  6.700e-07 ***
-#   tot.income.2013         1  28.895  7.641e-08 ***
-#   pct.minority            1  24.673  6.792e-07 ***
-#   pct.over.18             1  24.337  8.088e-07 ***
-#   avg_expected_wait_time  1  12.728  0.0003601 ***
-#   avg_surge_multiplier    1   6.126  0.0133211 *  
-  ## All variables are statistically significant
+#                        Df     Chisq     Pr(>Chisq)    
+# hour.factor            23   392.4592    < 2.2e-16 ***
+# nightlife               1   225.1550    < 2.2e-16 ***
+# pct.vacant.homes        1    25.4115    4.631e-07 ***
+# tot.income.2013         1    26.5169    2.612e-07 ***
+# pct.minority            1    23.8466    1.043e-06 ***
+# pct.over.18             1     9.6056      0.00194 ** 
+# avg_expected_wait_time  1     4.0573      0.04398 *  
+## All variables are statistically significant
 
 vif(model.final)
-# nightlife       pct.vacant.homes        tot.income.2013           pct.minority 
-# 1.342967               1.112263               2.338107               3.807767 
-# pct.over.18 avg_expected_wait_time   avg_surge_multiplier 
-# 2.853191               1.297919               1.010500
-  ## no apparent multicollinearity issues
+#                            GVIF   Df    GVIF^(1/(2*Df))
+# hour.factor            1.255068   23        1.004951
+# nightlife              1.333504    1        1.154774
+# pct.vacant.homes       1.116485    1        1.056638
+# tot.income.2013        2.346010    1        1.531669
+# pct.minority           3.809870    1        1.951889
+# pct.over.18            2.899222    1        1.702710
+# avg_expected_wait_time 1.603318    1        1.266222
+## no apparent multicollinearity issues
 
 # Residuals vs fitted values plot
 plot(fitted(model.final), rstandard(model.final), col = c("blue", "red"), main = "Residuals VS Fitted", xlab = "Fitted Values", ylab = "Studentized Residuals")
 abline(h = 0, lty = 2, col = "grey")
 lines(lowess(fitted(model.final), rstandard(model.final)), col = "green", lwd = 2)
-  ## According to the plot, data exhibits lack of heterogeinity, interdependence and lack of normality
-  ## There are also many outliers
-  ## All of these issues are likely due to the temporal and mixed nature of our data
-  ## Cannot base model selection on residual analysis, will rely on VIF and summary statistics
-
-
+  
 ## run model
-log.reg <- glm(has.crime ~ 
-               avg_surge_multiplier+
+log.reg.no.hr <- glm(has.crime ~ 
+                       avg_surge_multiplier+
+                       avg_expected_wait_time+
+                       pct.minority+
+                       pct.over.18+
+                       pct.vacant.homes+
+                       tot.income.2013+
+                       nightlife, 
+                     data=train, family="binomial")
+summary(log.reg.no.hr) # AIC: 15878
+
+log.reg.plus.hr <- glm(has.crime ~ 
                avg_expected_wait_time+
                pct.minority+
                pct.over.18+
                pct.vacant.homes+
-               med.income.2013+
                tot.income.2013+
-               nightlife,
-               #factor(census.tract), 
+               nightlife+
+               hour.factor, 
                data=train, family="binomial")
-summary(log.reg) # AIC: 15880
+summary(log.reg.plus.hr) # AIC: 15441
 
-Anova(log.reg, type = "II", test = "Wald")
-#                           Df    Chisq Pr(>Chisq)    
-#   avg_surge_multiplier    1   6.1436  0.0131887 *  
-#   avg_expected_wait_time  1  12.7018  0.0003653 ***
-#   pct.minority            1  16.3356  5.306e-05 ***
-#   pct.over.18             1  24.2389  8.510e-07 ***
-#   pct.vacant.homes        1  24.2301  8.549e-07 ***
-#   med.income.2013         1   0.0324  0.8571918    
-#   tot.income.2013         1  24.4038  7.811e-07 ***
-#   nightlife               1 233.1964  < 2.2e-16 ***
-  ## med.income is statistically insignificant
+# code for outputting tables:
+#install.packages("stargazer")
+#library(stargazer)
+#stargazer(log.reg.no.hr, log.reg.plus.hr, type="html")
 
-vif(log.reg)
-# avg_surge_multiplier avg_expected_wait_time   pct.minority          pct.over.18 
-# 1.011094               1.298632               5.478816               2.861129 
-# pct.vacant.homes      med.income.2013        tot.income.2013        nightlife 
-# 1.124398               4.600962               2.857838               1.343451 
-  ## Apparent multicollinearity issue with pct. minority
+Anova(log.reg.no.hr, type = "II", test = "Wald")
+Anova(log.reg.plus.hr, type = "II", test = "Wald")
+## Shows that avg. surge multiplier is insignificant when time is included
 
-log.reg.2 <- glm(has.crime ~ 
-                 avg_surge_multiplier+
-                 avg_expected_wait_time+
-                 # pct.minority+
-                 pct.over.18+
-                 pct.vacant.homes+
-                 med.income.2013+
-                 tot.income.2013+
-                 nightlife,
-               #factor(census.tract), 
-               data=train, family="binomial")
-summary(log.reg.2) # AIC: 15894
+vif(log.reg.no.hr)
+vif(log.reg.plus.hr)[,1]
+## VIF with a cutoff of 5 does not show that any multicolinearity
+## exists in either model - we do know that the model including hour is better, however
 
-Anova(log.reg.2, type = "II", test = "Wald")
-#                         Df    Chisq Pr(>Chisq)    
-# avg_surge_multiplier    1   6.2897  0.0121445 *  
-# avg_expected_wait_time  1  11.8328  0.0005820 ***
-# pct.over.18             1  11.2698  0.0007878 ***
-# pct.vacant.homes        1  24.4012  7.822e-07 ***
-# med.income.2013         1   8.7404  0.0031124 ** 
-# tot.income.2013         1  17.8684  2.367e-05 ***
-# nightlife               1 241.9360  < 2.2e-16 ***
-  ## All variables are statistically significant
+################################################################################
+#
+## run predictions of both models
+#
+################################################################################
+# create ROC curve on logit models
+  library(ROCR)
+  par(mfrow = c(1,2))
+  roc.pred <- prediction(predict(log.reg.no.hr, newdata = test, type = "response"), test$has.crime)
+  roc.perf <- performance(roc.pred, "tpr", "fpr")
+  auc <- performance(roc.pred, "auc")@y.values[[1]]
+  plot(roc.perf, main = paste("Model Excluding Hour\nROC (AUC=", round(auc,2), ")", sep = ""))
+  abline(0, 1, lty = "dashed")
+  
+  roc.predalt <- prediction(predict(log.reg.plus.hr, newdata = test, type = "response"), test$has.crime)
+  roc.perfalt <- performance(roc.predalt, "tpr", "fpr")
+  aucalt <- performance(roc.predalt, "auc")@y.values[[1]]
+  plot(roc.perfalt, main = paste("Model Including Hour\nROC (AUC=", round(aucalt,2), ") Alt", sep = ""), col = "red")
+  abline(0, 1, lty = "dashed", col = "red")
+  par(mfrow = c(1,1))
 
-vif(log.reg.2)
-# avg_surge_multiplier avg_expected_wait_time   pct.over.18       pct.vacant.homes 
-# 1.010746               1.306282               2.095746               1.133208 
-# med.income.2013        tot.income.2013        nightlife 
-# 3.182878               2.676318               1.332628 
-  ## No apparent multicollinearity
-
-# Residuals vs fitted values plot
-plot(fitted(log.reg.2), rstandard(log.reg.2), col = c("blue", "red"), main = "Residuals VS Fitted", xlab = "Fitted Values", ylab = "Studentized Residuals")
-abline(h = 0, lty = 2, col = "grey")
-lines(lowess(fitted(log.reg.2), rstandard(log.reg.2)), col = "green", lwd = 2)
-  ## According to the plot, data exhibits lack of heterogeinity, interdependence and lack of normality
-  ## There are also many outliers
-  ## All of these issues are likely due to the temporal and mixed nature of our data
-  ## Cannot base model selection on residual analysis, will rely on VIF and summary statistics
-
-# Keeping log.reg.2
-
-# predict on held-out 25% and evaluate confusion matrix
+  ## create matrix using best threshold
   library(caret)
-  predictions <- predict(log.reg.2, newdata = test, type="response")
+  predictions <- predict(log.reg.plus.hr, newdata = test, type="response")
+  
+  # simulate different cutoffs
+  pos<-vector()
+  neg<-vector()
+  for (i in seq(0,1,.01)) {
+    t.1 <- i
+    pred        <- factor(ifelse(predictions > t.1, 1, 0))
+    matrix      <- confusionMatrix(pred, test$has.crime)
+    pos <- c(pos,matrix$byClass["Pos Pred Value"])
+    neg <- c(neg,matrix$byClass["Neg Pred Value"])
+  }
+  plot(neg,pos)
+  
   threshold   <- 0.1
   pred        <- factor(ifelse(predictions > threshold, 1, 0))
   matrix      <- confusionMatrix(pred, test$has.crime)
   matrix$table
-
-# create ROC curve on logit models
-  library(ROCR)
-  par(mfrow = c(1,2))
-  roc.pred <- prediction(predict(log.reg.2, newdata = test, type = "response"), test$has.crime)
-  roc.perf <- performance(prediction, "tpr", "fpr")
-  auc <- performance(prediction, "auc")@y.values[[1]]
-  plot(roc.perf, main = paste("ROC (AUC=", round(auc,2), ")", sep = ""))
-  abline(0, 1, lty = "dashed")
-  roc.predalt <- prediction(predict(model.final, newdata = test, type = "response"), test$has.crime)
-  roc.perfalt <- performance(prediction, "tpr", "fpr")
-  aucalt <- performance(prediction, "auc")@y.values[[1]]
-  plot(roc.perfalt, main = paste("ROC (AUC=", round(auc,2), ") Alt", sep = ""), col = "red")
-  abline(0, 1, lty = "dashed", col = "red")
-  par(mfrow = c(1,1))
   
+
 ## add predictions for last hour of data:
   last.day <- test %>% filter(timestamp==max(test$timestamp))
-  last.day$predictions <- data.frame(predict(log.reg.2, newdata = last.day, type="response"))[,1]
-  last.day %>% glimpse()
+  last.day$predictions <- data.frame(predict(log.reg.plus.hr, newdata = last.day, type="response"))[,1]
 
 ## plot prediction next to actual
 tract <- fortify(readShapePoly('../Data/Census/Census_Tracts__2010.shp'), region = "GEOID")
@@ -307,8 +284,8 @@ grid.arrange(pred, act, ncol=2, top = main)
 ## this will evaluate how our model performs as a tool for cops to determine how to prioritize neighborhoods
 ## we want to rank the neighborhoods in terms of descending probability
 ## count the # crimes that occured in those neighborhoods as # total crimes
-predictions <- predict(log.reg.2, newdata = test, type="response")
-test$predictions <- data.frame(predict(log.reg.2, newdata = test, type="response"))[,1]
+predictions <- predict(log.reg.plus.hr, newdata = test, type="response")
+test$predictions <- data.frame(predict(log.reg.plus.hr, newdata = test, type="response"))[,1]
 
 # rank the predictions by highest to lowest
 # find cumulative pct crime captured by neighborhood by ranked prediction

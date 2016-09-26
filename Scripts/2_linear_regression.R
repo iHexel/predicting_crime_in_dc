@@ -9,6 +9,12 @@ library(readr)
 library(car)
 library(lubridate)
 library(maptools)
+library(caret)
+library(ROCR)
+library(gridExtra)
+library(grid)
+library(ggplot2)
+library(lattice)
 
 ## notes from LEE:
   ## hypothesis: more people more crime
@@ -279,7 +285,6 @@ lines(lowess(fitted(log.reg.3), rstandard(log.reg.3)), col = "green", lwd = 2)
 # Keeping log.reg.2 as the preferred model
 
 # predict on held-out 25% and evaluate confusion matrix
-library(caret)
 predictions <- predict(log.reg.2, newdata = test, type="response")
 threshold   <- 0.1
 pred        <- factor(ifelse(predictions > threshold, 1, 0))
@@ -287,7 +292,6 @@ matrix      <- confusionMatrix(pred, test$has.crime)
 matrix$table
 
 # create ROC curve on logit models
-library(ROCR)
 par(mfrow = c(1,2))
 roc.pred <- prediction(predict(log.reg.2, newdata = test, type = "response"), test$has.crime)
 roc.perf <- performance(roc.pred, "tpr", "fpr")
@@ -344,10 +348,6 @@ act <- ggplot(tract_poly, aes(long, lat, group = group, fill = cnt.crime)) +
         panel.background = element_blank())
 
 # Plot side by side
-library(gridExtra)
-library(grid)
-library(ggplot2)
-library(lattice)
 main=textGrob("Predicted vs. Actual Crime by Neighborhood\n2016-03-03 08:00:00 UTC",gp=gpar(fontsize=15,font=3))
 grid.arrange(pred, act, ncol=2, top = main)
 

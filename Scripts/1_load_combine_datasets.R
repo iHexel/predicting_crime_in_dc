@@ -62,13 +62,6 @@ add.census.tract <- function(long.lat.data) {
     assign.census.tract.id(tract_geom.ids)
 }
 
-# super fast 'cheating'
-crime.data.add.census.tract <- function(crime.data) {
-  crime.data %>%
-    mutate(census.tracts=paste('11001',census_tract,sep='')) %>%
-    select(-census_tract)
-}
-
 # add census tract to crime data
 crime.data %>% add.census.tract -> crime.data.census
 crime.data.census %>% saveRDS(file="../output/crime.data.census.rds")

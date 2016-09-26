@@ -102,15 +102,15 @@ rm(uber.census)
 # Import Demographics Data
 #
 ################################################################################
-census.data %>% 
-  mutate(geoid            = as.character(GEOID), 
-         total.population = P0010001, 
+census.data %>%
+  mutate(geoid            = as.character(GEOID),
+         total.population = P0010001,
          pct.minority     = (P0010001-P0020005)/P0010001,
          pct.over.18      = P0030001/P0010001,
          pct.vacant.homes = H0010003/H0010001,
-         med.income.2013  = FAGI_MEDIAN_2013, 
-         tot.income.2013  = FAGI_TOTAL_2013) %>% 
-  select(geoid, total.population, pct.minority, pct.over.18, 
+         med.income.2013  = FAGI_MEDIAN_2013,
+         tot.income.2013  = FAGI_TOTAL_2013) %>%
+  select(geoid, total.population, pct.minority, pct.over.18,
          pct.vacant.homes, med.income.2013, tot.income.2013) -> census.data
 
 left_join(uber.pooled.census,
@@ -124,28 +124,28 @@ left_join(uber.pooled.census,
 ################################################################################
 # read in tables and extract coordinates
 #liquor stores
-liquor <- data.frame(readShapePoints("../Data/Liquor_License_Locations/Liquor_License_Locations.shp")) %>% 
+liquor <- data.frame(readShapePoints("../Data/Liquor_License_Locations/Liquor_License_Locations.shp")) %>%
   mutate(nightclub  = ifelse(TYPE == 'Nightclub', 1, 0),  tavern  = ifelse(TYPE == 'Tavern', 1, 0),
-         restaurant = ifelse(TYPE == 'Restaurant', 1, 0), club    = ifelse(TYPE == 'Club', 1, 0), 
-         liquor.st  = ifelse(TYPE == 'Retail - Liquor Store', 1, 0)) %>% 
-  filter(nightclub+tavern+restaurant+club+liquor.st > 0 ) %>% 
-  select(address=ADDRESS, longitude=coords.x1, latitude=coords.x2, 
-         type = TYPE, nightclub, tavern, restaurant, club, liquor.st) %>% 
+         restaurant = ifelse(TYPE == 'Restaurant', 1, 0), club    = ifelse(TYPE == 'Club', 1, 0),
+         liquor.st  = ifelse(TYPE == 'Retail - Liquor Store', 1, 0)) %>%
+  filter(nightclub+tavern+restaurant+club+liquor.st > 0 ) %>%
+  select(address=ADDRESS, longitude=coords.x1, latitude=coords.x2,
+         type = TYPE, nightclub, tavern, restaurant, club, liquor.st) %>%
   add.census.tract
-  
+
 # Plots to check for general distribution
   ggplot(liquor, aes(x=longitude, y=latitude, color=type)) + geom_point() + coord_equal()
 
 # Group by census tract
-liquor %>% 
-  group_by(census.tract) %>% 
+liquor %>%
+  group_by(census.tract) %>%
   summarise(nightclub  = sum(nightclub),
             tavern     = sum(tavern),
             restaurant = sum(restaurant),
             club       = sum(club),
             liquor.st  = sum(liquor.st)) -> liquor.count
 
-# add to uber 
+# add to uber
 left_join(uber.pooled.census,
           liquor.count,
           by=c("census.tract")) -> uber.pooled.census

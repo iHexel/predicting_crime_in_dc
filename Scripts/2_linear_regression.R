@@ -224,7 +224,59 @@ lines(lowess(fitted(log.reg.2), rstandard(log.reg.2)), col = "green", lwd = 2)
   ## All of these issues are likely due to the temporal and mixed nature of our data
   ## Cannot base model selection on residual analysis, will rely on VIF and summary statistics
 
-# Keeping log.reg.2
+# Model which removes pct.minority and med.income.2013, based on previous VIF values
+log.reg.3 <- glm(has.crime ~
+                 avg_surge_multiplier+
+                 avg_expected_wait_time+
+                 # pct.minority+
+                 pct.over.18+
+                 pct.vacant.homes+
+                #  med.income.2013+
+                 tot.income.2013+
+                 nightlife,
+               #factor(census.tract),
+               data=train, family="binomial")
+summary(log.reg.3)
+
+Anova(log.reg.3, type = "II", test = "Wald")
+#                        Df    Chisq          Pr(>Chisq)
+# avg_surge_multiplier   1     5.983161       1.444310e-02
+# avg_expected_wait_time 1     12.140357      4.934234e-04
+# pct.over.18            1     6.161192       1.305832e-02
+# pct.vacant.homes       1     28.987264      7.285574e-08
+# tot.income.2013        1     8.781420       3.043142e-03
+# nightlife              1     239.705777     4.558894e-54
+  ## All variables are statistically significant, but not quite as much
+
+vif(log.reg.3)
+# avg_surge_multiplier
+# 1.01010499245473
+# avg_expected_wait_time
+# 1.30766218549044
+# pct.over.18
+# 1.83749772557633
+# pct.vacant.homes
+# 1.12561466869971
+# tot.income.2013
+# 1.4361581769739
+# nightlife
+# 1.34273233551098
+  ## All under 2, no apparent multicollinearity
+
+# Residuals vs fitted values plot
+plot(fitted(log.reg.3), rstandard(log.reg.3), col = c("blue", "red"), main = "Residuals VS Fitted", xlab = "Fitted Values", ylab = "Studentized Residuals")
+abline(h = 0, lty = 2, col = "grey")
+lines(lowess(fitted(log.reg.3), rstandard(log.reg.3)), col = "green", lwd = 2)
+## According to the plot, data exhibits lack of heterogeinity, interdependence and lack of normality
+## There are also many outliers
+## All of these issues are likely due to the temporal and mixed nature of our data
+## Similar to 1&2, 3 offers no real improvement
+## Cannot base model selection on residual analysis, will rely on VIF and summary statistics
+
+
+
+################################################################################
+# Keeping log.reg.2 as the preferred model
 
 # predict on held-out 25% and evaluate confusion matrix
   library(caret)

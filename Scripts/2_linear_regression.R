@@ -1,38 +1,28 @@
 # Analyse datasets
-suppressMessages(library(dplyr))
-suppressMessages(library(ggplot2))
-suppressMessages(library(lubridate))
-suppressMessages(library(maptools))
-suppressMessages(library(car))
-library(ggplot2)
-library(readr)
-library(car)
-library(lubridate)
-library(maptools)
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(maptools))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(readr))
+suppressPackageStartupMessages(library(car))
+suppressPackageStartupMessages(library(lubridate))
+suppressPackageStartupMessages(library(maptools))
+suppressPackageStartupMessages(library(PerformanceAnalytics))
+suppressPackageStartupMessages(library(ROCR))
+suppressPackageStartupMessages(library(gridExtra))
+suppressPackageStartupMessages(library(grid))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(lattice))
+suppressPackageStartupMessages(library(caret))
 
-## notes from LEE:
-  ## hypothesis: more people more crime
-  ## train on month one and then test on the other month
-  ## cant use data from the next moment in creating prediction for this moment so compare current hour stats to next hour's crime
-  # discuss the assumptions and tests for multi colinearity:
-    # heterogeinity
-    # independence
-    # normality
-    # test for outliers
-  # if you add historical crime rates into the model then it could affect the validity
-      ## discuss why we didnt keep last hour's crime into the model
-  ## USE VIF TO TEST THE INCLUSION OF VARIABLES
-    ## discuss why k-fold cross validation does not apply here because of the temporality
-  ## try a surveillance plot or ROC curve to show result
-  ## keep in mind that crime is a rare event so data is highly skewed so have to accomodate
-    ## when choosing training and testing and in choosing threshhold
 
 ########################################################################
 #
 # import data and join crimes to uber info in hour before
 #
 ########################################################################
-# setwd("C:/Users/hexel/Documents/R/SYS6018/Case1/v2/case1-crime-brady_dev")
 ## add lagged timestamp for crime to compare 9 pm uber surge to 10 pm crime
 crime.data.census <- readRDS("../Output/crime.data.census.rds") %>%
   mutate(timestamp=update(start_date,minutes=0,seconds=0)  + hours(1))
@@ -82,7 +72,6 @@ train = uber.crime %>% filter(week(timestamp)<9)
 test  = uber.crime %>% filter(week(timestamp)==9)
 
 # Alternative to pairs function
-library(PerformanceAnalytics)
 chart.Correlation(train[1:1000,c("has.crime", "hour", "avg_surge_multiplier","avg_expected_wait_time","pct.minority","pct.over.18","pct.vacant.homes","med.income.2013","tot.income.2013","nightclub","tavern","restaurant","club","liquor.st")],
                   method="spearman",
                   histogram=TRUE,
@@ -171,10 +160,6 @@ log.reg.plus.hr <- glm(has.crime ~
 summary(log.reg.plus.hr) # AIC: 15441
 
 # code for outputting tables:
-#install.packages("stargazer")
-#library(stargazer)
-#stargazer(log.reg.no.hr, log.reg.plus.hr, type="html")
-
 Anova(log.reg.no.hr, type = "II", test = "Wald")
 Anova(log.reg.plus.hr, type = "II", test = "Wald")
 ## Shows that avg. surge multiplier is insignificant when time is included
@@ -190,7 +175,6 @@ vif(log.reg.plus.hr)[,1]
 #
 ################################################################################
 # create ROC curve on logit models
-  library(ROCR)
   par(mfrow = c(1,2))
   roc.pred <- prediction(predict(log.reg.no.hr, newdata = test, type = "response"), test$has.crime)
   roc.perf <- performance(roc.pred, "tpr", "fpr")
@@ -206,7 +190,6 @@ vif(log.reg.plus.hr)[,1]
   par(mfrow = c(1,1))
 
   ## create matrix using best threshold
-  library(caret)
   predictions <- predict(log.reg.plus.hr, newdata = test, type="response")
 
   # simulate different cutoffs
@@ -268,10 +251,6 @@ tract_poly <- merge(tract, last.day, by.x = "id", by.y = "census.tract")
           panel.background = element_blank())
 
 # Plot side by side
-library(gridExtra)
-library(grid)
-library(ggplot2)
-library(lattice)
 main=textGrob("Predicted vs. Actual Crime by Neighborhood\n2016-03-03 08:00:00 UTC",gp=gpar(fontsize=15,font=3))
 grid.arrange(pred, act, ncol=2, top = main)
 

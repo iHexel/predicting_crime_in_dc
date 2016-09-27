@@ -77,11 +77,14 @@ uber.crime$hour.factor <- factor(uber.crime$hour)
 train = uber.crime %>% filter(week(timestamp)<9)
 test  = uber.crime %>% filter(week(timestamp)==9)
 
-# Alternative to pairs function
-chart.Correlation(train[1:1000,c("has.crime", "hour", "avg_surge_multiplier","avg_expected_wait_time","pct.minority","pct.over.18","pct.vacant.homes","med.income.2013","tot.income.2013","nightclub","tavern","restaurant","club","liquor.st")],
-                  method="spearman",
-                  histogram=TRUE,
-                  pch=16)
+train %>%
+  ungroup %>%
+  head(10) %>%
+  dplyr::select(-timestamp,-census.tract,-has.crime,-tod,-hour.factor) %>%
+  chart.Correlation(method="spearman",
+                    histogram=TRUE,
+                    pch=16)
+# Alternative to pairs function)
   ## High pos. correlation between net and median income variables
   ## High neg. correlation between pct. minority and both income variables
   ## Noticeable pos. correlation between pct. over 18 and income variables

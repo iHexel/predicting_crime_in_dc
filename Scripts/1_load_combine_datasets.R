@@ -1,3 +1,9 @@
+# SYS6018 Case 1
+# Erik Langenborg ::    el4gf
+# Brady Fowler    ::    dbf5sd
+# Tianye Song     ::    ts7fx
+# Lev Zadvinskiy  ::    lz4uc
+
 # Collect and combine the datasets
 suppressMessages(library(dplyr))
 suppressMessages(library(lubridate))
@@ -5,14 +11,15 @@ suppressMessages(library(deldir))
 suppressMessages(library(ks))
 suppressMessages(library(purrr))
 suppressMessages(library(mapproj))
+suppressMessages(library(mapproj))
+suppressMessages(library(ggplot2))
+suppressMessages(library(readr))
+suppressMessages(library(SDMTools))
+suppressMessages(library(maptools))
+# multidplyr is not available on CRAN, but it is very useful for sharding
 # # install.packages("devtools")
 # devtools::install_github("hadley/multidplyr")
-library(multidplyr)
-library(mapproj)
-library(ggplot2)
-library(readr)
-library(SDMTools)
-library(maptools)
+suppressMessages(library(multidplyr))
 
 ################################################################################
 #
@@ -62,13 +69,6 @@ add.census.tract <- function(long.lat.data) {
     assign.census.tract.id(tract_geom.ids)
 }
 
-# super fast 'cheating'
-crime.data.add.census.tract <- function(crime.data) {
-  crime.data %>%
-    mutate(census.tracts=paste('11001',census_tract,sep='')) %>%
-    select(-census_tract)
-}
-
 # add census tract to crime data
 crime.data %>% add.census.tract -> crime.data.census
 crime.data.census %>% saveRDS(file="../output/crime.data.census.rds")
@@ -102,15 +102,15 @@ rm(uber.census)
 # Import Demographics Data
 #
 ################################################################################
-census.data %>% 
-  mutate(geoid            = as.character(GEOID), 
-         total.population = P0010001, 
+census.data %>%
+  mutate(geoid            = as.character(GEOID),
+         total.population = P0010001,
          pct.minority     = (P0010001-P0020005)/P0010001,
          pct.over.18      = P0030001/P0010001,
          pct.vacant.homes = H0010003/H0010001,
-         med.income.2013  = FAGI_MEDIAN_2013, 
-         tot.income.2013  = FAGI_TOTAL_2013) %>% 
-  select(geoid, total.population, pct.minority, pct.over.18, 
+         med.income.2013  = FAGI_MEDIAN_2013,
+         tot.income.2013  = FAGI_TOTAL_2013) %>%
+  select(geoid, total.population, pct.minority, pct.over.18,
          pct.vacant.homes, med.income.2013, tot.income.2013) -> census.data
 
 left_join(uber.pooled.census,
@@ -124,28 +124,28 @@ left_join(uber.pooled.census,
 ################################################################################
 # read in tables and extract coordinates
 #liquor stores
-liquor <- data.frame(readShapePoints("../Data/Liquor_License_Locations/Liquor_License_Locations.shp")) %>% 
+liquor <- data.frame(readShapePoints("../Data/Liquor_License_Locations/Liquor_License_Locations.shp")) %>%
   mutate(nightclub  = ifelse(TYPE == 'Nightclub', 1, 0),  tavern  = ifelse(TYPE == 'Tavern', 1, 0),
-         restaurant = ifelse(TYPE == 'Restaurant', 1, 0), club    = ifelse(TYPE == 'Club', 1, 0), 
-         liquor.st  = ifelse(TYPE == 'Retail - Liquor Store', 1, 0)) %>% 
-  filter(nightclub+tavern+restaurant+club+liquor.st > 0 ) %>% 
-  select(address=ADDRESS, longitude=coords.x1, latitude=coords.x2, 
-         type = TYPE, nightclub, tavern, restaurant, club, liquor.st) %>% 
+         restaurant = ifelse(TYPE == 'Restaurant', 1, 0), club    = ifelse(TYPE == 'Club', 1, 0),
+         liquor.st  = ifelse(TYPE == 'Retail - Liquor Store', 1, 0)) %>%
+  filter(nightclub+tavern+restaurant+club+liquor.st > 0 ) %>%
+  select(address=ADDRESS, longitude=coords.x1, latitude=coords.x2,
+         type = TYPE, nightclub, tavern, restaurant, club, liquor.st) %>%
   add.census.tract
-  
+
 # Plots to check for general distribution
   ggplot(liquor, aes(x=longitude, y=latitude, color=type)) + geom_point() + coord_equal()
 
 # Group by census tract
-liquor %>% 
-  group_by(census.tract) %>% 
+liquor %>%
+  group_by(census.tract) %>%
   summarise(nightclub  = sum(nightclub),
             tavern     = sum(tavern),
             restaurant = sum(restaurant),
             club       = sum(club),
             liquor.st  = sum(liquor.st)) -> liquor.count
 
-# add to uber 
+# add to uber
 left_join(uber.pooled.census,
           liquor.count,
           by=c("census.tract")) -> uber.pooled.census

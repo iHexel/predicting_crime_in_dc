@@ -11,14 +11,15 @@ suppressMessages(library(deldir))
 suppressMessages(library(ks))
 suppressMessages(library(purrr))
 suppressMessages(library(mapproj))
+suppressMessages(library(mapproj))
+suppressMessages(library(ggplot2))
+suppressMessages(library(readr))
+suppressMessages(library(SDMTools))
+suppressMessages(library(maptools))
+# multidplyr is not available on CRAN, but it is very useful for sharding
 # # install.packages("devtools")
 # devtools::install_github("hadley/multidplyr")
-library(multidplyr) # Useful for sharding
-library(mapproj)
-library(ggplot2)
-library(readr)
-library(SDMTools)
-library(maptools)
+suppressMessages(library(multidplyr))
 
 ################################################################################
 #

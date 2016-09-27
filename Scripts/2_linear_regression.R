@@ -175,80 +175,80 @@ vif(log.reg.plus.hr)[,1]
 #
 ################################################################################
 # create ROC curve on logit models
-  par(mfrow = c(1,2))
-  roc.pred <- prediction(predict(log.reg.no.hr, newdata = test, type = "response"), test$has.crime)
-  roc.perf <- performance(roc.pred, "tpr", "fpr")
-  auc <- performance(roc.pred, "auc")@y.values[[1]]
-  plot(roc.perf, main = paste("Model Excluding Hour\nROC (AUC=", round(auc,2), ")", sep = ""))
-  abline(0, 1, lty = "dashed")
+par(mfrow = c(1,2))
+roc.pred <- prediction(predict(log.reg.no.hr, newdata = test, type = "response"), test$has.crime)
+roc.perf <- performance(roc.pred, "tpr", "fpr")
+auc <- performance(roc.pred, "auc")@y.values[[1]]
+plot(roc.perf, main = paste("Model Excluding Hour\nROC (AUC=", round(auc,2), ")", sep = ""))
+abline(0, 1, lty = "dashed")
 
-  roc.predalt <- prediction(predict(log.reg.plus.hr, newdata = test, type = "response"), test$has.crime)
-  roc.perfalt <- performance(roc.predalt, "tpr", "fpr")
-  aucalt <- performance(roc.predalt, "auc")@y.values[[1]]
-  plot(roc.perfalt, main = paste("Model Including Hour\nROC (AUC=", round(aucalt,2), ") Alt", sep = ""), col = "red")
-  abline(0, 1, lty = "dashed", col = "red")
-  par(mfrow = c(1,1))
+roc.predalt <- prediction(predict(log.reg.plus.hr, newdata = test, type = "response"), test$has.crime)
+roc.perfalt <- performance(roc.predalt, "tpr", "fpr")
+aucalt <- performance(roc.predalt, "auc")@y.values[[1]]
+plot(roc.perfalt, main = paste("Model Including Hour\nROC (AUC=", round(aucalt,2), ") Alt", sep = ""), col = "red")
+abline(0, 1, lty = "dashed", col = "red")
+par(mfrow = c(1,1))
 
-  ## create matrix using best threshold
-  predictions <- predict(log.reg.plus.hr, newdata = test, type="response")
+## create matrix using best threshold
+predictions <- predict(log.reg.plus.hr, newdata = test, type="response")
 
-  # simulate different cutoffs
-  pos<-vector()
-  neg<-vector()
-  for (i in seq(0,1,.01)) {
-    t.1 <- i
-    pred        <- factor(ifelse(predictions > t.1, 1, 0))
-    matrix      <- confusionMatrix(pred, test$has.crime)
-    pos <- c(pos,matrix$byClass["Pos Pred Value"])
-    neg <- c(neg,matrix$byClass["Neg Pred Value"])
-  }
-  plot(neg,pos)
-
-  threshold   <- 0.1
-  pred        <- factor(ifelse(predictions > threshold, 1, 0))
+# simulate different cutoffs
+pos<-vector()
+neg<-vector()
+for (i in seq(0,1,.01)) {
+  t.1 <- i
+  pred        <- factor(ifelse(predictions > t.1, 1, 0))
   matrix      <- confusionMatrix(pred, test$has.crime)
-  matrix$table
+  pos <- c(pos,matrix$byClass["Pos Pred Value"])
+  neg <- c(neg,matrix$byClass["Neg Pred Value"])
+}
+plot(neg,pos)
+
+threshold   <- 0.1
+pred        <- factor(ifelse(predictions > threshold, 1, 0))
+matrix      <- confusionMatrix(pred, test$has.crime)
+matrix$table
 
 
 ## add predictions for last hour of data:
-  last.day <- test %>% filter(timestamp==max(test$timestamp))
-  last.day$predictions <- data.frame(predict(log.reg.plus.hr, newdata = last.day, type="response"))[,1]
+last.day <- test %>% filter(timestamp==max(test$timestamp))
+last.day$predictions <- data.frame(predict(log.reg.plus.hr, newdata = last.day, type="response"))[,1]
 
 ## plot prediction next to actual
 tract <- fortify(readShapePoly('../Data/Census/Census_Tracts__2010.shp'), region = "GEOID")
 tract_poly <- merge(tract, last.day, by.x = "id", by.y = "census.tract")
 
 # plot geoshapes colored by prediction
-  pred <- ggplot(tract_poly, aes(long, lat, group = group, fill = predictions))  +
-    geom_polygon(colour="#ecf0f1", size=.2) + coord_equal() +
-    ggtitle("Logistic Crime Prediction") +
-    scale_fill_gradient(low = "skyblue1", high = "blue4",
-                        guide = guide_legend(title = "Log Odds")) +
-    theme(legend.position = "bottom",
-          axis.line=element_blank(),axis.text.x=element_blank(),
-          axis.text.y=element_blank(),axis.ticks=element_blank(),
-          axis.title.x=element_blank(),
-          axis.title.y=element_blank(),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.border = element_blank(),
-          panel.background = element_blank())
+pred <- ggplot(tract_poly, aes(long, lat, group = group, fill = predictions))  +
+  geom_polygon(colour="#ecf0f1", size=.2) + coord_equal() +
+  ggtitle("Logistic Crime Prediction") +
+  scale_fill_gradient(low = "skyblue1", high = "blue4",
+                      guide = guide_legend(title = "Log Odds")) +
+  theme(legend.position = "bottom",
+        axis.line=element_blank(),axis.text.x=element_blank(),
+        axis.text.y=element_blank(),axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())
 
 # plot actual
-  act <- ggplot(tract_poly, aes(long, lat, group = group, fill = cnt.crime)) +
-    geom_polygon(colour="#ecf0f1", size=.2) + coord_equal() +
-    ggtitle("Actual Crime Count") +
-    scale_fill_gradient(low = "skyblue1", high = "blue4", breaks=c(0,1,2,3,4),
-                        guide = guide_legend(title = "# Crimes")) +
-    theme(legend.position = "bottom",
-          axis.line=element_blank(),axis.text.x=element_blank(),
-          axis.text.y=element_blank(),axis.ticks=element_blank(),
-          axis.title.x=element_blank(),
-          axis.title.y=element_blank(),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          panel.border = element_blank(),
-          panel.background = element_blank())
+act <- ggplot(tract_poly, aes(long, lat, group = group, fill = cnt.crime)) +
+  geom_polygon(colour="#ecf0f1", size=.2) + coord_equal() +
+  ggtitle("Actual Crime Count") +
+  scale_fill_gradient(low = "skyblue1", high = "blue4", breaks=c(0,1,2,3,4),
+                      guide = guide_legend(title = "# Crimes")) +
+  theme(legend.position = "bottom",
+        axis.line=element_blank(),axis.text.x=element_blank(),
+        axis.text.y=element_blank(),axis.ticks=element_blank(),
+        axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank())
 
 # Plot side by side
 main=textGrob("Predicted vs. Actual Crime by Neighborhood\n2016-03-03 08:00:00 UTC",gp=gpar(fontsize=15,font=3))

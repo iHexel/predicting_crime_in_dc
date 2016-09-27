@@ -1,4 +1,5 @@
 # Collect and combine the datasets
+
 suppressMessages(library(dplyr))
 suppressMessages(library(lubridate))
 suppressMessages(library(deldir))
@@ -7,7 +8,7 @@ suppressMessages(library(purrr))
 suppressMessages(library(mapproj))
 # # install.packages("devtools")
 # devtools::install_github("hadley/multidplyr")
-library(multidplyr)
+library(multidplyr) # Useful for sharding
 library(mapproj)
 library(ggplot2)
 library(readr)
@@ -60,13 +61,6 @@ add.census.tract <- function(long.lat.data) {
   long.lat.data %>%
     mutate(census.tract=NA) %>%
     assign.census.tract.id(tract_geom.ids)
-}
-
-# super fast 'cheating'
-crime.data.add.census.tract <- function(crime.data) {
-  crime.data %>%
-    mutate(census.tracts=paste('11001',census_tract,sep='')) %>%
-    select(-census_tract)
 }
 
 # add census tract to crime data

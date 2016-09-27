@@ -1,3 +1,9 @@
+# SYS6018 Case 1
+# Erik Langenborg ::    el4gf
+# Brady Fowler    ::    dbf5sd
+# Tianye Song     ::    ts7fx
+# Lev Zadvinskiy  ::    lz4uc
+
 # Analyse datasets
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(ggplot2))

@@ -1,5 +1,10 @@
-# Collect and combine the datasets
+# SYS6018 Case 1
+# Erik Langenborg ::    el4gf
+# Brady Fowler    ::    dbf5sd
+# Tianye Song     ::    ts7fx
+# Lev Zadvinskiy  ::    lz4uc
 
+# Collect and combine the datasets
 suppressMessages(library(dplyr))
 suppressMessages(library(lubridate))
 suppressMessages(library(deldir))
